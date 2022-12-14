@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"time"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -77,25 +78,38 @@ func main() {
 
 	//close the connection
 	defer conn.Close()
+	var count int64 = 0
+
+	ticker := time.NewTicker(5 * time.Second) // 创建一个5秒的定时器
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+				count = count + 1
+				send_msg := fmt.Sprintf("%d hello!", count)
+				logger.Debug("this send msg:", zap.String("send_msg", send_msg))
+
+				_, err = conn.Write([]byte(send_msg))
+				if err != nil {
+					logger.Error("Write data failed", zap.Error(err))
+					continue
+				}
+
+				// buffer to get data
+				received := make([]byte, 4096)
+
+				recv_len, recv_err := conn.Read(received)
+				if recv_err != nil {
+					logger.Error("Read data failed", zap.Error(recv_err))
+					continue
+				}
+				logger.Debug("recv response msg:", zap.Int("recv_len", recv_len), zap.String("received", string(received[:recv_len])))
+			}
+		}
+	}()
+
+	// 主协程永不退出
 	for {
-		var input_msg string
-		fmt.Scanln(&input_msg)
-		logger.Debug("this input msg:", zap.String("input_msg", input_msg))
-
-		_, err = conn.Write([]byte(input_msg))
-		if err != nil {
-			logger.Error("Write data failed", zap.Error(err))
-			continue
-		}
-
-		// buffer to get data
-		received := make([]byte, 4096)
-
-		recv_len, recv_err := conn.Read(received)
-		if recv_err != nil {
-			logger.Error("Read data failed", zap.Error(recv_err))
-			continue
-		}
-		logger.Debug("recv response msg:", zap.Int("recv_len", recv_len), zap.String("received", string(received[:recv_len])))
+		time.Sleep(10 * time.Second)
 	}
 }
